@@ -17,7 +17,7 @@
   html,body{margin:0;padding:0;background:var(--bg);color:var(--txt);
     font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
     -webkit-text-size-adjust:100%;}
-  body{padding:0 14px 120px;max-width:560px;margin:0 auto;}
+  body{padding:0 14px 130px;max-width:560px;margin:0 auto;}
   header{position:sticky;top:0;background:linear-gradient(180deg,var(--bg) 80%,transparent);
     padding:18px 0 12px;z-index:10;}
   h1{font-size:20px;margin:0;letter-spacing:.3px;}
@@ -56,17 +56,18 @@
   label.fld{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.5px;
     color:var(--muted);font-weight:600;margin-bottom:6px;}
   .bar{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:1px solid var(--line);
-    padding:12px 14px calc(12px + env(safe-area-inset-bottom));display:flex;gap:9px;
+    padding:12px 14px calc(12px + env(safe-area-inset-bottom));display:flex;gap:8px;
     max-width:560px;margin:0 auto;}
-  .btn{flex:1;border:none;border-radius:11px;padding:14px 8px;font-size:14px;font-weight:700;
+  .btn{flex:1;border:none;border-radius:11px;padding:14px 6px;font-size:14px;font-weight:700;
     font-family:inherit;}
-  .btn.primary{background:var(--accent);color:#1a1209;}
+  .btn.primary{flex:1.5;background:var(--accent);color:#1a1209;}
   .btn.ghost{background:var(--card2);color:var(--txt);border:1px solid var(--line);}
-  .toast{position:fixed;left:50%;bottom:96px;transform:translateX(-50%) translateY(20px);
+  .toast{position:fixed;left:50%;bottom:100px;transform:translateX(-50%) translateY(20px);
     background:var(--accent2);color:#0a1f0d;font-weight:700;font-size:14px;padding:11px 20px;
     border-radius:30px;opacity:0;transition:all .25s;pointer-events:none;z-index:50;
-    box-shadow:0 6px 20px rgba(0,0,0,.4);}
+    box-shadow:0 6px 20px rgba(0,0,0,.4);max-width:80%;text-align:center;}
   .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+  .toast.err{background:var(--warn);color:#1a1200;}
   .saved{font-size:11px;color:var(--muted);text-align:center;margin:4px 0 0;}
   details{margin-top:14px;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:0 14px;}
   summary{padding:14px 0;font-weight:700;font-size:14px;cursor:pointer;list-style:none;}
@@ -98,11 +99,11 @@
   <div class="help">
     <b>Each set:</b> punch in the actual weight you used, reps you hit, and the RPE.
     Target numbers are shown as faint placeholders — beat or match them.<br><br>
-    <b>⚑ = calibration weight.</b> My best guess since you've no log yet. Find a load
+    <b>&#9873; = calibration weight.</b> My best guess since you've no log yet. Find a load
     that hits the target RPE, log what you actually used, and I'll lock in real numbers
     for Day 2 onward.<br><br>
-    <b>When done:</b> tap <b>Copy for Claude</b> and paste it into our chat. That's how
-    your log stays the source of truth.<br><br>
+    <b>When done:</b> tap <b>Send to Claude</b> — it goes straight to me, no copy-paste.
+    <b>Copy</b> is a backup if you ever need it.<br><br>
     <b>Save</b> keeps everything on this phone so you can close and come back mid-session.
     <div class="rpeguide">
       <b style="color:#e6edf3">RPE = reps left in the tank.</b><br>
@@ -113,7 +114,8 @@
 
 <div class="bar">
   <button class="btn ghost" onclick="saveLocal(true)">Save</button>
-  <button class="btn primary" onclick="copyForClaude()">Copy for Claude</button>
+  <button class="btn ghost" onclick="copyForClaude()">Copy</button>
+  <button class="btn primary" onclick="sendToClaude()">Send to Claude</button>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -123,7 +125,6 @@ const SESSION_NAME = "Day 1 — Lower Body + Carries";
 const BLOCK_LABEL = "Week 1 | Block 1 (Volume)";
 const STORE_KEY = "liftlog_day1_v1";
 
-// Exercise definitions: sets, target reps, target weight, rpe, note, flag(calibration)
 const EXERCISES = [
   {name:"Goblet Squat", sets:3, reps:"12", wt:"25", unit:"lb DB", rpe:"7", flag:false,
    note:"3-sec lowering. Widen stance / sit back if knee complains."},
@@ -133,11 +134,11 @@ const EXERCISES = [
    note:"Front knee tracks over mid-foot. Add DBs when 10/10 is easy."},
   {name:"DB Walking Lunge", sets:2, reps:"20 steps", wt:"20", unit:"lb DBs", rpe:"7", flag:true,
    note:"Race-specific stride. Controlled, no knee cave."},
-  {name:"Farmer Carry", sets:3, reps:"40 m", wt:"45", unit:"lb DBs", rpe:"—", flag:true,
-   note:"GRIP = Spartan #1. Heavy but no failure — don't set down early."},
+  {name:"Farmer Carry (timed)", sets:3, reps:"45 s", wt:"45", unit:"lb DBs", rpe:"—", flag:true,
+   note:"GRIP = Spartan #1. Short shuttle laps or march in place — keep moving, no setting down. ~45s = a 40m carry."},
   {name:"Standing Calf Raise", sets:3, reps:"15", wt:"30", unit:"lb DB", rpe:"7", flag:true,
    note:"Full stretch at bottom, squeeze at top."},
-  {name:"Plank", sets:3, reps:"30–45 s", wt:"BW", unit:"", rpe:"—", flag:false,
+  {name:"Plank", sets:3, reps:"30-45 s", wt:"BW", unit:"", rpe:"—", flag:false,
    note:"Brace hard, no hip sag."}
 ];
 
@@ -205,7 +206,7 @@ function saveLocal(showToast){
   try{ localStorage.setItem(STORE_KEY, JSON.stringify(state));
     document.getElementById("savedstatus").textContent = "Saved on this device · "+new Date().toLocaleTimeString();
     if(showToast) toast("Saved ✓");
-  }catch(err){ if(showToast) toast("Save unavailable — use Copy"); }
+  }catch(err){ if(showToast) toast("Save unavailable — use Send",true); }
 }
 
 function loadLocal(){
@@ -221,21 +222,35 @@ function fmtDate(iso){
   const [y,m,d]=iso.split("-"); return `${d}/${m}/${y}`;
 }
 
-function copyForClaude(){
+function buildPayload(){
   let out = `${fmtDate(state.date)} — ${SESSION_NAME}\n${BLOCK_LABEL}\nExercise | Sets x Reps | Weight (lbs) | RPE | Notes\n`;
   EXERCISES.forEach((e,ei)=>{
     const sets=state.ex[ei].sets.filter(s=>s.w||s.r||s.rpe);
-    if(sets.length===0){
-      out += `${e.name} | — not logged — | | |\n`; return;
-    }
-    // group: show each set, or compress if identical
+    if(sets.length===0){ out += `${e.name} | -- not logged -- | | |\n`; return; }
     const reps=sets.map(s=>s.r||"?").join(",");
     const wts=[...new Set(sets.map(s=>s.w||"?"))].join("/");
     const rpes=[...new Set(sets.map(s=>s.rpe||"?"))].join("/");
     out += `${e.name} | ${sets.length} x ${reps} | ${wts} | ${rpes} |\n`;
   });
   out += `---\nSession notes: ${state.notes||"(none)"}\n`;
+  return out;
+}
 
+function sendToClaude(){
+  const payload = buildPayload();
+  toast("Sending…");
+  fetch('/api/log',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({date:fmtDate(state.date),session:SESSION_NAME,log:payload,loggedAt:new Date().toISOString()})
+  }).then(async r=>{
+    if(r.ok){ toast("Sent to Claude ✓"); }
+    else { console.log(await r.text()); toast("Send failed — tap Copy instead",true); }
+  }).catch(()=>toast("Send failed — tap Copy instead",true));
+}
+
+function copyForClaude(){
+  const out = buildPayload();
   if(navigator.clipboard && navigator.clipboard.writeText){
     navigator.clipboard.writeText(out).then(()=>toast("Copied — paste to Claude"),()=>fallbackCopy(out));
   } else { fallbackCopy(out); }
@@ -251,12 +266,12 @@ function fallbackCopy(text){
 }
 
 let toastTimer;
-function toast(msg){
-  const t=document.getElementById("toast"); t.textContent=msg; t.classList.add("show");
-  clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.classList.remove("show"),1900);
+function toast(msg,isErr){
+  const t=document.getElementById("toast"); t.textContent=msg;
+  t.classList.toggle("err",!!isErr); t.classList.add("show");
+  clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.classList.remove("show"),2200);
 }
 
-// boot
 if(!loadLocal()){ initState(); }
 render();
 </script>
