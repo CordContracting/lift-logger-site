@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0d1117">
+<title>Lift Logger — Day 1</title>
+<style>
+  :root{
+    --bg:#0d1117; --card:#161b22; --card2:#1c2330; --line:#2a3340;
+    --txt:#e6edf3; --muted:#8b98a8; --accent:#f0883e; --accent2:#3fb950;
+    --warn:#d29922; --blue:#388bfd; --radius:14px;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--txt);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    -webkit-text-size-adjust:100%;}
+  body{padding:0 14px 120px;max-width:560px;margin:0 auto;}
+  header{position:sticky;top:0;background:linear-gradient(180deg,var(--bg) 80%,transparent);
+    padding:18px 0 12px;z-index:10;}
+  h1{font-size:20px;margin:0;letter-spacing:.3px;}
+  .sub{color:var(--muted);font-size:13px;margin-top:3px;}
+  .blockpill{display:inline-block;background:var(--card2);color:var(--accent);
+    font-size:11px;font-weight:700;padding:4px 9px;border-radius:20px;margin-top:8px;
+    text-transform:uppercase;letter-spacing:.5px;border:1px solid var(--line);}
+  .datewrap{margin:6px 0 2px;}
+  .datewrap input{background:var(--card);border:1px solid var(--line);color:var(--txt);
+    border-radius:8px;padding:7px 9px;font-size:14px;font-family:inherit;}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+    padding:14px;margin:12px 0;}
+  .exhead{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;}
+  .exname{font-size:16px;font-weight:700;margin:0;}
+  .target{font-size:12px;color:var(--muted);margin-top:3px;line-height:1.45;}
+  .target b{color:var(--accent2);font-weight:700;}
+  .flag{color:var(--warn);font-weight:700;}
+  .note{font-size:12px;color:var(--muted);margin-top:6px;font-style:italic;line-height:1.4;}
+  table{width:100%;border-collapse:collapse;margin-top:12px;}
+  th{font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);
+    font-weight:600;padding:0 4px 6px;text-align:center;}
+  th.seth{text-align:left;width:34px;}
+  td{padding:3px 3px;text-align:center;}
+  td.setn{color:var(--muted);font-size:13px;font-weight:700;text-align:left;}
+  input.cell{width:100%;background:var(--card2);border:1px solid var(--line);
+    color:var(--txt);border-radius:9px;padding:11px 4px;font-size:16px;text-align:center;
+    font-family:inherit;font-weight:600;}
+  input.cell:focus{outline:none;border-color:var(--accent);background:#222b38;}
+  input.cell::placeholder{color:#55606e;font-weight:400;}
+  .done td{opacity:.45;}
+  .donebtn{background:var(--card2);border:1px solid var(--line);border-radius:9px;
+    color:var(--muted);width:100%;padding:11px;font-size:13px;font-weight:600;}
+  .donebtn.on{background:rgba(63,185,80,.15);border-color:var(--accent2);color:var(--accent2);}
+  textarea{width:100%;background:var(--card2);border:1px solid var(--line);color:var(--txt);
+    border-radius:10px;padding:11px;font-size:15px;font-family:inherit;min-height:80px;resize:vertical;}
+  label.fld{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.5px;
+    color:var(--muted);font-weight:600;margin-bottom:6px;}
+  .bar{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:1px solid var(--line);
+    padding:12px 14px calc(12px + env(safe-area-inset-bottom));display:flex;gap:9px;
+    max-width:560px;margin:0 auto;}
+  .btn{flex:1;border:none;border-radius:11px;padding:14px 8px;font-size:14px;font-weight:700;
+    font-family:inherit;}
+  .btn.primary{background:var(--accent);color:#1a1209;}
+  .btn.ghost{background:var(--card2);color:var(--txt);border:1px solid var(--line);}
+  .toast{position:fixed;left:50%;bottom:96px;transform:translateX(-50%) translateY(20px);
+    background:var(--accent2);color:#0a1f0d;font-weight:700;font-size:14px;padding:11px 20px;
+    border-radius:30px;opacity:0;transition:all .25s;pointer-events:none;z-index:50;
+    box-shadow:0 6px 20px rgba(0,0,0,.4);}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+  .saved{font-size:11px;color:var(--muted);text-align:center;margin:4px 0 0;}
+  details{margin-top:14px;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:0 14px;}
+  summary{padding:14px 0;font-weight:700;font-size:14px;cursor:pointer;list-style:none;}
+  summary::-webkit-details-marker{display:none;}
+  .help{font-size:13px;color:var(--muted);line-height:1.6;padding-bottom:14px;}
+  .help b{color:var(--txt);}
+  .rpeguide{font-size:11px;color:var(--muted);background:var(--card2);border-radius:8px;
+    padding:8px 10px;margin-top:4px;line-height:1.5;}
+</style>
+</head>
+<body>
+<header>
+  <h1>Day 1 — Lower Body + Carries</h1>
+  <div class="sub">Spartan Sprint prep · 4-day block</div>
+  <span class="blockpill" id="blocklabel">Block 1 · Volume · RPE 7</span>
+  <div class="datewrap"><input type="date" id="sessiondate"></div>
+  <p class="saved" id="savedstatus"></p>
+</header>
+
+<div id="exlist"></div>
+
+<div class="card">
+  <label class="fld" for="notes">Session Notes</label>
+  <textarea id="notes" placeholder="Energy / sleep / how it felt / knee or elbow check / anything notable"></textarea>
+</div>
+
+<details>
+  <summary>How to use this + RPE guide</summary>
+  <div class="help">
+    <b>Each set:</b> punch in the actual weight you used, reps you hit, and the RPE.
+    Target numbers are shown as faint placeholders — beat or match them.<br><br>
+    <b>⚑ = calibration weight.</b> My best guess since you've no log yet. Find a load
+    that hits the target RPE, log what you actually used, and I'll lock in real numbers
+    for Day 2 onward.<br><br>
+    <b>When done:</b> tap <b>Copy for Claude</b> and paste it into our chat. That's how
+    your log stays the source of truth.<br><br>
+    <b>Save</b> keeps everything on this phone so you can close and come back mid-session.
+    <div class="rpeguide">
+      <b style="color:#e6edf3">RPE = reps left in the tank.</b><br>
+      RPE 7 = 3 reps left · RPE 8 = 2 left · RPE 9 = 1 left · RPE 10 = none.
+    </div>
+  </div>
+</details>
+
+<div class="bar">
+  <button class="btn ghost" onclick="saveLocal(true)">Save</button>
+  <button class="btn primary" onclick="copyForClaude()">Copy for Claude</button>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const SESSION_NAME = "Day 1 — Lower Body + Carries";
+const BLOCK_LABEL = "Week 1 | Block 1 (Volume)";
+const STORE_KEY = "liftlog_day1_v1";
+
+// Exercise definitions: sets, target reps, target weight, rpe, note, flag(calibration)
+const EXERCISES = [
+  {name:"Goblet Squat", sets:3, reps:"12", wt:"25", unit:"lb DB", rpe:"7", flag:false,
+   note:"3-sec lowering. Widen stance / sit back if knee complains."},
+  {name:"DB Romanian Deadlift", sets:3, reps:"12", wt:"35", unit:"lb DBs", rpe:"7", flag:true,
+   note:"Hinge at hips, feel the hamstrings. Confirm this weight."},
+  {name:"Bulgarian Split Squat", sets:3, reps:"10/leg", wt:"BW", unit:"", rpe:"7", flag:true,
+   note:"Front knee tracks over mid-foot. Add DBs when 10/10 is easy."},
+  {name:"DB Walking Lunge", sets:2, reps:"20 steps", wt:"20", unit:"lb DBs", rpe:"7", flag:true,
+   note:"Race-specific stride. Controlled, no knee cave."},
+  {name:"Farmer Carry", sets:3, reps:"40 m", wt:"45", unit:"lb DBs", rpe:"—", flag:true,
+   note:"GRIP = Spartan #1. Heavy but no failure — don't set down early."},
+  {name:"Standing Calf Raise", sets:3, reps:"15", wt:"30", unit:"lb DB", rpe:"7", flag:true,
+   note:"Full stretch at bottom, squeeze at top."},
+  {name:"Plank", sets:3, reps:"30–45 s", wt:"BW", unit:"", rpe:"—", flag:false,
+   note:"Brace hard, no hip sag."}
+];
+
+let state = {date:"", notes:"", ex:[]};
+
+function todayStr(){
+  const d=new Date(); const off=d.getTimezoneOffset();
+  return new Date(d-off*60000).toISOString().slice(0,10);
+}
+
+function initState(){
+  state.date = todayStr();
+  state.ex = EXERCISES.map(e=>({
+    sets: Array.from({length:e.sets},()=>({w:"",r:"",rpe:"",done:false}))
+  }));
+}
+
+function render(){
+  document.getElementById("sessiondate").value = state.date;
+  document.getElementById("notes").value = state.notes;
+  const list = document.getElementById("exlist");
+  list.innerHTML = "";
+  EXERCISES.forEach((e,ei)=>{
+    const card=document.createElement("div"); card.className="card";
+    const wtTxt = e.wt==="BW" ? "Bodyweight" : `${e.wt} ${e.unit}`;
+    const rpeTxt = e.rpe==="—" ? "" : ` · RPE <b>${e.rpe}</b>`;
+    card.innerHTML = `
+      <div class="exhead">
+        <div>
+          <p class="exname">${e.name}</p>
+          <div class="target"><b>${e.sets} × ${e.reps}</b> · ${wtTxt}${e.flag?' <span class="flag">⚑</span>':''}${rpeTxt}</div>
+        </div>
+      </div>
+      <div class="note">${e.note}</div>
+      <table><thead><tr>
+        <th class="seth">Set</th><th>Weight</th><th>Reps</th><th>RPE</th><th style="width:64px">Done</th>
+      </tr></thead><tbody id="tb-${ei}"></tbody></table>`;
+    list.appendChild(card);
+    const tb=card.querySelector(`#tb-${ei}`);
+    state.ex[ei].sets.forEach((s,si)=>{
+      const tr=document.createElement("tr");
+      if(s.done) tr.className="done";
+      const wph = e.wt==="BW"?"BW":e.wt;
+      const rpeCell = e.rpe==="—"
+        ? `<td><input class="cell" inputmode="decimal" placeholder="—" value="${s.rpe}" oninput="upd(${ei},${si},'rpe',this.value)"></td>`
+        : `<td><input class="cell" inputmode="decimal" placeholder="${e.rpe}" value="${s.rpe}" oninput="upd(${ei},${si},'rpe',this.value)"></td>`;
+      tr.innerHTML = `
+        <td class="setn">${si+1}</td>
+        <td><input class="cell" inputmode="decimal" placeholder="${wph}" value="${s.w}" oninput="upd(${ei},${si},'w',this.value)"></td>
+        <td><input class="cell" inputmode="numeric" placeholder="${e.reps.replace(/[^0-9/]/g,'')||'—'}" value="${s.r}" oninput="upd(${ei},${si},'r',this.value)"></td>
+        ${rpeCell}
+        <td><button class="donebtn ${s.done?'on':''}" onclick="toggle(${ei},${si})">${s.done?'✓':'—'}</button></td>`;
+      tb.appendChild(tr);
+    });
+  });
+}
+
+function upd(ei,si,k,v){ state.ex[ei].sets[si][k]=v; saveLocal(false); }
+function toggle(ei,si){ state.ex[ei].sets[si].done=!state.ex[ei].sets[si].done; saveLocal(false); render(); }
+
+document.getElementById("sessiondate").addEventListener("change",e=>{state.date=e.target.value;saveLocal(false);});
+document.getElementById("notes").addEventListener("input",e=>{state.notes=e.target.value;saveLocal(false);});
+
+function saveLocal(showToast){
+  try{ localStorage.setItem(STORE_KEY, JSON.stringify(state));
+    document.getElementById("savedstatus").textContent = "Saved on this device · "+new Date().toLocaleTimeString();
+    if(showToast) toast("Saved ✓");
+  }catch(err){ if(showToast) toast("Save unavailable — use Copy"); }
+}
+
+function loadLocal(){
+  try{ const raw=localStorage.getItem(STORE_KEY);
+    if(raw){ const s=JSON.parse(raw);
+      if(s && s.ex && s.ex.length===EXERCISES.length){ state=s; return true; } }
+  }catch(err){}
+  return false;
+}
+
+function fmtDate(iso){
+  if(!iso) return "";
+  const [y,m,d]=iso.split("-"); return `${d}/${m}/${y}`;
+}
+
+function copyForClaude(){
+  let out = `${fmtDate(state.date)} — ${SESSION_NAME}\n${BLOCK_LABEL}\nExercise | Sets x Reps | Weight (lbs) | RPE | Notes\n`;
+  EXERCISES.forEach((e,ei)=>{
+    const sets=state.ex[ei].sets.filter(s=>s.w||s.r||s.rpe);
+    if(sets.length===0){
+      out += `${e.name} | — not logged — | | |\n`; return;
+    }
+    // group: show each set, or compress if identical
+    const reps=sets.map(s=>s.r||"?").join(",");
+    const wts=[...new Set(sets.map(s=>s.w||"?"))].join("/");
+    const rpes=[...new Set(sets.map(s=>s.rpe||"?"))].join("/");
+    out += `${e.name} | ${sets.length} x ${reps} | ${wts} | ${rpes} |\n`;
+  });
+  out += `---\nSession notes: ${state.notes||"(none)"}\n`;
+
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(out).then(()=>toast("Copied — paste to Claude"),()=>fallbackCopy(out));
+  } else { fallbackCopy(out); }
+}
+
+function fallbackCopy(text){
+  const ta=document.createElement("textarea"); ta.value=text;
+  ta.style.position="fixed"; ta.style.opacity="0"; document.body.appendChild(ta);
+  ta.focus(); ta.select();
+  try{ document.execCommand("copy"); toast("Copied — paste to Claude"); }
+  catch(e){ prompt("Copy this and send to Claude:", text); }
+  document.body.removeChild(ta);
+}
+
+let toastTimer;
+function toast(msg){
+  const t=document.getElementById("toast"); t.textContent=msg; t.classList.add("show");
+  clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.classList.remove("show"),1900);
+}
+
+// boot
+if(!loadLocal()){ initState(); }
+render();
+</script>
+</body>
+</html>
