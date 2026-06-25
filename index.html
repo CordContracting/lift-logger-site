@@ -89,6 +89,25 @@
   .trow button{flex:1;border:none;border-radius:11px;padding:13px 4px;font-size:14px;font-weight:700;font-family:inherit;}
   .trow .tg{background:var(--card2);color:var(--txt);border:1px solid var(--line);}
   .trow .tp{background:var(--accent);color:#1a1209;}
+  .weekrow{display:flex;align-items:center;gap:10px;margin-top:8px;}
+  .wbtn{background:var(--card2);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:4px 12px;font-size:15px;font-family:inherit;}
+  #weeklabel{font-size:13px;font-weight:700;color:var(--muted);}
+  #blockbanner .card{margin-top:0;}
+  .restpill{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(78px + env(safe-area-inset-bottom));background:var(--blue);color:#fff;
+    border-radius:30px;padding:8px 10px 8px 16px;display:none;align-items:center;gap:10px;z-index:55;box-shadow:0 6px 20px rgba(0,0,0,.4);font-weight:700;}
+  .restpill.show{display:flex;}
+  .restpill span{font-variant-numeric:tabular-nums;font-size:15px;}
+  .restpill button{background:rgba(255,255,255,.22);border:none;color:#fff;border-radius:14px;padding:6px 10px;font-size:12px;font-weight:700;font-family:inherit;}
+  .cardioform label.fld{margin-top:12px;}
+  .cardioform input,.cardioform select{width:100%;background:var(--card2);border:1px solid var(--line);color:var(--txt);border-radius:9px;padding:11px;font-size:16px;font-family:inherit;}
+  .prep summary{color:var(--accent2);}
+  .preplist{margin:10px 0 4px;padding-left:18px;color:var(--txt);font-size:14px;line-height:1.7;}
+  .preplist.cool{list-style:none;padding-left:0;}
+  .preplist.cool li{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--line);}
+  .preplist.cool li:last-child{border-bottom:none;}
+  .tbtn.sm{padding:6px 11px;font-size:13px;}
+  .sughint{font-size:12px;color:var(--accent);margin-top:6px;font-weight:600;}
+  .prbadge{font-size:11px;color:#0a1f0d;background:var(--accent2);padding:2px 7px;border-radius:10px;font-weight:800;margin-left:4px;}
 </style>
 </head>
 <body>
@@ -97,23 +116,27 @@
   <h1 id="dayname"></h1>
   <div class="sub">Spartan Sprint prep · 4-day block</div>
   <span class="blockpill" id="blockpill"></span>
+  <div class="weekrow" id="weekrow"><button class="wbtn" onclick="changeWeek(-1)">◀</button><span id="weeklabel">Week 1 / 12</span><button class="wbtn" onclick="changeWeek(1)">▶</button></div>
   <div class="ctrls">
     <input type="date" id="sessiondate">
     <input type="text" id="bw" inputmode="decimal" placeholder="BW (lb)">
     <button class="mini" id="kbbtn" onclick="toggleKeyboard()">⌨ 123</button>
+    <button class="mini" id="restbtn" onclick="cycleRest()">⏲ 90s</button>
     <button class="mini" onclick="newSession()">＋ New</button>
+    <button class="mini" onclick="showProgress()">📊 Progress</button>
   </div>
   <p class="saved" id="savedstatus"></p>
 </header>
 
+<div id="blockbanner"></div>
 <div id="exlist"></div>
 
-<div class="card">
+<div class="card" id="notescard">
   <label class="fld" for="notes">Overall Session Notes</label>
   <textarea id="notes" placeholder="Energy / sleep / HRV / how it felt overall"></textarea>
 </div>
 
-<details>
+<details id="helpdetails">
   <summary>How to use this + RPE guide</summary>
   <div class="help">
     <b>Pick the day</b> up top — each day saves separately.<br><br>
@@ -125,6 +148,10 @@
     <div class="rpeguide"><b style="color:#e6edf3">RPE = reps left in the tank.</b><br>7 = 3 left · 8 = 2 left · 9 = 1 left · 10 = none.</div>
   </div>
 </details>
+
+<div id="progress" style="display:none"></div>
+
+<div class="restpill" id="restpill"><span id="restnum">1:30</span><button onclick="restAdd(30)">+30</button><button onclick="restSkip()">Skip</button></div>
 
 <div class="bar">
   <button class="btn ghost" onclick="saveLocal(true)">Save</button>
@@ -147,8 +174,14 @@
 </div>
 
 <script>
-const BLOCK_LABEL = "Week 1 | Block 1 (Volume)";
-const BLOCK_PILL = "Block 1 · Volume · RPE 7";
+function blockInfo(wk){
+  if(wk<=4) return {name:"Volume", block:1, rpe:"7", reps:"higher reps, 10-15", color:"#3fb950"};
+  if(wk<=8) return {name:"Intensity", block:2, rpe:"8", reps:"6-10 reps, add load", color:"#f0883e"};
+  if(wk<=11) return {name:"Heavy", block:3, rpe:"8-9", reps:"4-6 reps, heaviest", color:"#d29922"};
+  return {name:"Deload", block:4, rpe:"5-6", reps:"easy ~8-10, recover", color:"#388bfd"};
+}
+function blockLabel(){ const b=blockInfo(curWeek); return "Week "+curWeek+" | Block "+b.block+" ("+b.name+")"; }
+function blockPill(){ const b=blockInfo(curWeek); return "Week "+curWeek+" · "+b.name+" · RPE "+b.rpe; }
 
 const DAYS = [
   { id:"day1", name:"Day 1 — Lower Body + Carries", exercises:[
@@ -214,12 +247,28 @@ const DAYS = [
      note:"Core + grip bonus. Hang from bar, knees up controlled. Sub lying leg raise if grip is fried."},
     {name:"March / Run Intervals (timed)", sets:6, reps:"60 s", wt:"BW", unit:"", rpe:"\u2014", flag:false, timed:true,
      note:"Build the engine for the 5K. 60s brisk run or fast march, 60s easy between. Log how it felt."}
-  ]}
+  ]},
+  { id:"cardio", name:"Cardio / Run", cardio:true }
 ];
+
+const PREP={
+ day1:{warm:["1-2 min easy march / jog in place","Leg swings x10 each (front-back + side)","Bodyweight squats x15","Walking lunges x6 per leg (no weight)","Ankle circles x10 each"],
+   cool:[{n:"Kneeling hip-flexor stretch",s:45},{n:"Standing hamstring stretch",s:45},{n:"Quad stretch",s:45},{n:"Wall calf stretch",s:45},{n:"Figure-4 glute stretch",s:45}]},
+ day2:{warm:["Arm circles x15 each direction","Band or towel shoulder dislocates x10","Scap push-ups x10","Wrist + elbow circles x10","Light DB press x12 (warm-up weight)"],
+   cool:[{n:"Doorway chest stretch",s:45},{n:"Cross-body shoulder stretch",s:45},{n:"Overhead triceps stretch",s:45},{n:"Childs pose",s:60},{n:"Wrist flexor + extensor stretch",s:30}]},
+ day3:{warm:["Dead hang 15-20s (grip prep)","Band pull-aparts x15","Scap pull-ups x8","Cat-cow x8","Forearm + wrist shakeout"],
+   cool:[{n:"Lat stretch (side reach)",s:45},{n:"Biceps + forearm stretch",s:45},{n:"Childs pose with side reach",s:45},{n:"Doorway chest stretch",s:45},{n:"Forearm flexor stretch",s:30}]},
+ day4:{warm:["1 min easy march / jog","Leg swings x10 each","Bodyweight squats x15","Glute bridges x12","High knees 20s"],
+   cool:[{n:"Hip-flexor stretch",s:45},{n:"Hamstring stretch",s:45},{n:"Figure-4 glute stretch",s:45},{n:"Calf stretch",s:45},{n:"Knees-to-chest lower back",s:45}]},
+ cardio:{warm:["Brisk walk 2-3 min","Leg swings x10 each","Ankle circles x10 each"],
+   cool:[{n:"Walk it out",s:120},{n:"Hamstring stretch",s:45},{n:"Calf stretch",s:45},{n:"Hip-flexor stretch",s:45},{n:"Quad stretch",s:45}]}
+};
 
 let curDay = parseInt(localStorage.getItem("liftlog_curday")||"0");
 if(curDay<0||curDay>=DAYS.length) curDay=0;
 let kbMode = localStorage.getItem("liftlog_kbmode") || "num";
+let curWeek = parseInt(localStorage.getItem("liftlog_week")||"1"); if(curWeek<1||curWeek>12) curWeek=1;
+let restLen = parseInt(localStorage.getItem("liftlog_restlen")||"90");
 let state = {date:"", bw:"", notes:"", ex:[]};
 
 function day(){ return DAYS[curDay]; }
@@ -230,13 +279,15 @@ function todayStr(){ const d=new Date(); const off=d.getTimezoneOffset(); return
 
 function initState(){
   state.date=todayStr(); state.bw=""; state.notes="";
-  state.ex=day().exercises.map(e=>({note:"",sets:Array.from({length:e.sets},()=>({w:"",r:"",rpe:"",done:false}))}));
+  if(day().cardio){ state.cardio={type:"Run",dist:"",time:"",hr:"",rpe:""}; state.ex=[]; }
+  else { state.cardio=null; state.ex=day().exercises.map(e=>({note:"",sets:Array.from({length:e.sets},()=>({w:"",r:"",rpe:"",done:false}))})); }
 }
 
 function loadDay(){
   try{ const raw=localStorage.getItem(storeKey());
     if(raw){ const s=JSON.parse(raw);
-      if(s&&s.ex&&s.ex.length===day().exercises.length){
+      if(day().cardio){ if(s&&s.cardio){ if(typeof s.bw!=="string") s.bw=""; state=s; return; } }
+      else if(s&&s.ex&&s.ex.length===day().exercises.length){
         s.ex.forEach(x=>{ if(typeof x.note!=="string") x.note=""; });
         if(typeof s.bw!=="string") s.bw="";
         state=s; return; } }
@@ -246,6 +297,7 @@ function loadDay(){
 
 function getTargets(){ try{ return JSON.parse(localStorage.getItem(tgtKey())||"{}"); }catch(e){ return {}; } }
 function saveTargets(){
+  if(day().cardio) return;
   const t={};
   state.ex.forEach((x,ei)=>{
     const filled=x.sets.filter(s=>s.w);
@@ -263,38 +315,53 @@ function renderDayPick(){
   DAYS.forEach((d,i)=>{
     const b=document.createElement("button");
     b.className="daybtn"+(i===curDay?" on":"");
-    b.textContent="Day "+(i+1);
-    b.onclick=()=>{ curDay=i; localStorage.setItem("liftlog_curday",i); loadDay(); render(); };
+    b.textContent=DAYS[i].cardio?"Cardio":("Day "+(i+1));
+    b.onclick=()=>{ curDay=i; localStorage.setItem("liftlog_curday",i); loadDay(); if(document.getElementById("progress").style.display==="block"){hideProgress();} render(); };
     dp.appendChild(b);
   });
 }
 
 function render(){
   renderDayPick();
+  const isCardio=!!day().cardio;
   document.getElementById("dayname").textContent=day().name;
-  document.getElementById("blockpill").textContent=BLOCK_PILL;
   document.getElementById("sessiondate").value=state.date;
   document.getElementById("bw").value=state.bw||"";
   document.getElementById("notes").value=state.notes;
   document.getElementById("kbbtn").textContent=kbMode==="text"?"⌨ ABC":"⌨ 123";
   document.getElementById("kbbtn").classList.toggle("active",kbMode==="text");
+  updRestBtn();
+  document.getElementById("weekrow").style.display=isCardio?"none":"flex";
+  document.getElementById("blockpill").style.display=isCardio?"none":"inline-block";
+  const bb=document.getElementById("blockbanner");
+  if(isCardio){ bb.style.display="none"; }
+  else {
+    document.getElementById("blockpill").textContent=blockPill();
+    document.getElementById("weeklabel").textContent="Week "+curWeek+" / 12";
+    const b=blockInfo(curWeek);
+    bb.style.display="block";
+    bb.innerHTML='<div class="card" style="border-color:'+b.color+'"><b style="color:'+b.color+'">Block '+b.block+' · '+b.name+'</b><div class="note">Target RPE '+b.rpe+' · '+b.reps+'</div></div>';
+  }
+  if(isCardio){ renderCardio(); return; }
   const tgts=getTargets();
   const list=document.getElementById("exlist"); list.innerHTML="";
+  list.insertAdjacentHTML("beforeend", warmHTML());
   day().exercises.forEach((e,ei)=>{
     const card=document.createElement("div"); card.className="card";
     const wtTxt=e.wt==="BW"?"Bodyweight":`${e.wt} ${e.unit}`;
-    const rpeTxt=e.rpe==="—"?"":` · RPE <b>${e.rpe}</b>`;
+    const bRpe=blockInfo(curWeek).rpe;
+    const rpeTxt=e.rpe==="—"?"":` · RPE <b>${bRpe}</b>`;
     const rolled=tgts[ei]&&tgts[ei].w&&tgts[ei].w!==e.wt;
     card.innerHTML=`
       <div class="exhead">
         <div>
-          <p class="exname">${e.name}</p>
+          <p class="exname">${e.name} ${prBadge(e,ei)}</p>
           <div class="target"><b>${e.sets} × ${e.reps}</b> · ${wtTxt}${e.flag?' <span class="flag">⚑</span>':''}${rpeTxt}</div>
         </div>
         ${e.timed?`<button class="tbtn" onclick="openTimer(${ei})">⏱ ${secsOf(e)}s</button>`:''}
       </div>
       <div class="note">${e.note}</div>
-      ${rolled?`<div class="rollhint">↻ Last time: ${tgts[ei].w} lb — beat or match it.</div>`:''}
+      ${(()=>{const sg=suggestNext(e);return sg?`<div class="sughint">${sg}</div>`:(rolled?`<div class="rollhint">↻ Last time: ${tgts[ei].w} lb — beat or match it.</div>`:'');})()}
       <table><thead><tr><th class="seth">Set</th><th>Weight</th><th>Reps</th><th>RPE</th><th style="width:64px">Done</th></tr></thead>
       <tbody id="tb-${ei}"></tbody></table>
       <input class="exnote" id="exnote-${ei}" placeholder="Notes for this exercise (optional)">`;
@@ -304,7 +371,7 @@ function render(){
     const tb=card.querySelector(`#tb-${ei}`);
     const wph=(tgts[ei]&&tgts[ei].w)?tgts[ei].w:(e.wt==="BW"?"BW":e.wt);
     const rph=e.reps.replace(/[^0-9/]/g,'')||'—';
-    const rpePh=e.rpe==="—"?"—":e.rpe;
+    const rpePh=e.rpe==="—"?"—":blockInfo(curWeek).rpe;
     state.ex[ei].sets.forEach((s,si)=>{
       const tr=document.createElement("tr"); if(s.done) tr.className="done";
       tr.innerHTML=`
@@ -316,11 +383,12 @@ function render(){
       tb.appendChild(tr);
     });
   });
+  list.insertAdjacentHTML("beforeend", coolHTML());
 }
 
 function upd(ei,si,k,v){ state.ex[ei].sets[si][k]=v; saveLocal(false); }
 function updNote(ei,v){ state.ex[ei].note=v; saveLocal(false); }
-function toggle(ei,si){ state.ex[ei].sets[si].done=!state.ex[ei].sets[si].done; saveLocal(false); render(); }
+function toggle(ei,si){ const wd=state.ex[ei].sets[si].done; state.ex[ei].sets[si].done=!wd; saveLocal(false); if(!wd && restLen>0) startRest(); render(); }
 
 function toggleKeyboard(){ kbMode=kbMode==="num"?"text":"num"; localStorage.setItem("liftlog_kbmode",kbMode); render();
   toast(kbMode==="text"?"Full keyboard on":"Number pad on"); }
@@ -345,7 +413,8 @@ function saveLocal(showToast){
 function fmtDate(iso){ if(!iso) return ""; const [y,m,d]=iso.split("-"); return `${d}/${m}/${y}`; }
 
 function buildPayload(){
-  let out=`${fmtDate(state.date)} — ${day().name}\n${BLOCK_LABEL}\nBodyweight: ${state.bw||"(not logged)"} lb\nExercise | Sets x Reps | Weight (lbs) | RPE | Notes\n`;
+  if(day().cardio){ const c=state.cardio||{}; return `${fmtDate(state.date)} — Cardio / Run\nBodyweight: ${state.bw||"(not logged)"} lb\nType: ${c.type||"-"} | Distance: ${c.dist||"-"} mi | Time: ${c.time||"-"} min | Avg HR: ${c.hr||"-"} | Effort RPE: ${c.rpe||"-"}\n---\nNotes: ${state.notes||"(none)"}\n`; }
+  let out=`${fmtDate(state.date)} — ${day().name}\n${blockLabel()}\nBodyweight: ${state.bw||"(not logged)"} lb\nExercise | Sets x Reps | Weight (lbs) | RPE | Notes\n`;
   day().exercises.forEach((e,ei)=>{
     const exNote=(state.ex[ei].note||"").replace(/\n/g,' ');
     const sets=state.ex[ei].sets.filter(s=>s.w||s.r||s.rpe);
@@ -364,7 +433,7 @@ function sendToClaude(){
   fetch('/api/log',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({date:fmtDate(state.date),session:day().name,log:payload,loggedAt:new Date().toISOString()})
   }).then(async r=>{
-    if(r.ok){ saveTargets(); toast("Sent to Claude ✓"); render(); }
+    if(r.ok){ saveTargets(); recordHistory(); toast("Sent to Claude ✓"); render(); }
     else { console.log(await r.text()); toast("Send failed — tap Copy instead",true); }
   }).catch(()=>toast("Send failed — tap Copy instead",true));
 }
@@ -389,12 +458,13 @@ function toast(msg,isErr){ const t=document.getElementById("toast"); t.textConte
 /* ---- Timer ---- */
 let tInt=null, tLeft=0, tTotal=0, tRunning=false;
 function fmtT(s){ const m=Math.floor(s/60); const ss=s%60; return m+":"+(ss<10?"0":"")+ss; }
-function openTimer(ei){ const e=day().exercises[ei]; tTotal=secsOf(e); tLeft=tTotal; tRunning=false;
-  document.getElementById("tname").textContent=e.name;
+function openTimerVals(name,secs){ tTotal=secs; tLeft=secs; tRunning=false;
+  document.getElementById("tname").textContent=name;
   const n=document.getElementById("tnum"); n.textContent=fmtT(tLeft); n.classList.remove("fin");
   document.getElementById("tstart").textContent="Start";
   document.getElementById("tmodal").classList.add("show");
 }
+function openTimer(ei){ const e=day().exercises[ei]; openTimerVals(e.name, secsOf(e)); }
 function timerStartPause(){
   if(tRunning){ clearInterval(tInt); tRunning=false; document.getElementById("tstart").textContent="Resume"; return; }
   tRunning=true; document.getElementById("tstart").textContent="Pause";
@@ -409,6 +479,159 @@ function timerReset(){ clearInterval(tInt); tRunning=false; tLeft=tTotal;
   const n=document.getElementById("tnum"); n.textContent=fmtT(tLeft); n.classList.remove("fin");
   document.getElementById("tstart").textContent="Start"; }
 function timerClose(){ clearInterval(tInt); tRunning=false; document.getElementById("tmodal").classList.remove("show"); }
+
+
+/* ---- Progress ---- */
+function num(v){ const f=parseFloat(v); return isNaN(f)?null:f; }
+function recordHistory(){
+  let hist=[]; try{ hist=JSON.parse(localStorage.getItem("liftlog_hist")||"[]"); }catch(e){}
+  const exData=day().cardio?[]:day().exercises.map((e,ei)=>{
+    const ws=state.ex[ei].sets.map(s=>num(s.w)).filter(v=>v!=null);
+    const rs=state.ex[ei].sets.map(s=>num(s.rpe)).filter(v=>v!=null);
+    const reps=(state.ex[ei].sets.find(s=>s.r)||{}).r||null;
+    return {name:e.name, w: ws.length?Math.max.apply(null,ws):null, rpe: rs.length?Math.max.apply(null,rs):null, reps:reps};
+  });
+  const entry={ts:Date.now(), dayId:day().id, dayName:day().name, date:state.date, bw:num(state.bw), ex:exData};
+  if(day().cardio){ const c=state.cardio||{}; entry.cardio={type:c.type||"", dist:num(c.dist), time:num(c.time)}; }
+  hist=hist.filter(x=>!(x.dayId===entry.dayId && x.date===entry.date));
+  hist.push(entry);
+  localStorage.setItem("liftlog_hist", JSON.stringify(hist));
+}
+function chartSVG(pts,color){
+  if(!pts.length) return '<div class="note">No data yet.</div>';
+  const W=300,H=130,pad=24; const ys=pts.map(p=>p.y);
+  let mn=Math.min.apply(null,ys), mx=Math.max.apply(null,ys); if(mn===mx){ mn-=1; mx+=1; }
+  const n=pts.length;
+  const xf=i=> n===1? W/2 : pad + i*(W-2*pad)/(n-1);
+  const yf=v=> H-pad - (v-mn)*(H-2*pad)/(mx-mn);
+  const line=pts.map((p,i)=>xf(i).toFixed(1)+","+yf(p.y).toFixed(1)).join(" ");
+  const dots=pts.map((p,i)=>'<circle cx="'+xf(i).toFixed(1)+'" cy="'+yf(p.y).toFixed(1)+'" r="3" fill="'+color+'"/>').join("");
+  let svg='<svg viewBox="0 0 '+W+' '+H+'" width="100%" style="display:block">';
+  svg+='<line x1="'+pad+'" y1="'+(H-pad)+'" x2="'+(W-pad)+'" y2="'+(H-pad)+'" stroke="#2a3340"/>';
+  svg+='<polyline points="'+line+'" fill="none" stroke="'+color+'" stroke-width="2.5"/>'+dots;
+  svg+='<text x="'+pad+'" y="14" fill="#8b98a8" font-size="11">'+pts[0].y+'</text>';
+  svg+='<text x="'+(W-pad)+'" y="14" fill="'+color+'" font-size="12" text-anchor="end" font-weight="700">'+pts[n-1].y+'</text></svg>';
+  return svg;
+}
+function showProgress(){
+  buildProgressUI();
+  document.getElementById("exlist").style.display="none";
+  document.getElementById("notescard").style.display="none";
+  document.getElementById("helpdetails").style.display="none";
+  document.querySelector(".bar").style.display="none";
+  document.getElementById("progress").style.display="block";
+  window.scrollTo(0,0);
+}
+function hideProgress(){
+  document.getElementById("progress").style.display="none";
+  document.getElementById("exlist").style.display="";
+  document.getElementById("notescard").style.display="";
+  document.getElementById("helpdetails").style.display="";
+  document.querySelector(".bar").style.display="";
+}
+let progSel="";
+function buildProgressUI(){
+  let hist=[]; try{ hist=JSON.parse(localStorage.getItem("liftlog_hist")||"[]"); }catch(e){}
+  hist.sort((a,b)=>a.ts-b.ts);
+  const p=document.getElementById("progress");
+  if(!hist.length){
+    p.innerHTML='<div class="card"><div class="exname">📊 Progress</div><div class="note">No sessions logged on this phone yet. Tap “Send to Claude” after a workout and your charts build here automatically. (I also keep your full history on my side — just ask me anytime.)</div></div><button class="btn ghost" style="width:100%" onclick="hideProgress()">← Back to logging</button>';
+    return;
+  }
+  const bwPts=hist.filter(h=>h.bw!=null).map(h=>({x:h.date,y:h.bw}));
+  const exNames=[...new Set(hist.flatMap(h=>h.ex.filter(e=>e.w!=null).map(e=>e.name)))];
+  if(!progSel||exNames.indexOf(progSel)<0) progSel=exNames[0]||"";
+  const exPts=hist.filter(h=>{const f=h.ex.find(e=>e.name===progSel); return f&&f.w!=null;})
+                  .map(h=>({x:h.date,y:h.ex.find(e=>e.name===progSel).w}));
+  let html='<div class="card"><div class="exname">📊 Progress</div><div class="note">'+hist.length+' sessions logged on this phone.</div></div>';
+  if(bwPts.length){
+    const d=(bwPts[bwPts.length-1].y-bwPts[0].y);
+    html+='<div class="card"><div class="exname">Bodyweight</div><div class="note">'+bwPts[0].y+' → '+bwPts[bwPts.length-1].y+' lb ('+(d>0?'+':'')+d.toFixed(1)+')</div>'+chartSVG(bwPts,"#3fb950")+'</div>';
+  }
+  if(exNames.length){
+    const opts=exNames.map(n=>'<option'+(n===progSel?' selected':'')+'>'+n+'</option>').join("");
+    html+='<div class="card"><select id="progexsel" onchange="progSel=this.value;buildProgressUI();" style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--txt);border-radius:9px;padding:11px;font-size:15px;font-family:inherit;margin-bottom:8px">'+opts+'</select>'+chartSVG(exPts,"#f0883e")+'<div class="note">Top weight per session (lb)</div></div>';
+  }
+  const days7=hist.filter(h=>(Date.now()-h.ts)<7*864e5).length;
+  html+='<div class="card"><div class="exname">🔥 Consistency</div><div class="note">'+hist.length+' sessions total · '+days7+' in the last 7 days.</div></div>';
+  const prs={}; hist.forEach(h=>(h.ex||[]).forEach(x=>{ if(x.w!=null){ if(prs[x.name]==null||x.w>prs[x.name]) prs[x.name]=x.w; } }));
+  const prNames=Object.keys(prs);
+  if(prNames.length){ html+='<div class="card"><div class="exname">🏆 Personal Bests</div>'+prNames.map(n=>'<div class="note" style="display:flex;justify-content:space-between;gap:10px"><span>'+n+'</span><b style="color:var(--accent2)">'+prs[n]+' lb</b></div>').join("")+'</div>'; }
+  html+='<button class="btn ghost" style="width:100%" onclick="hideProgress()">← Back to logging</button>';
+  p.innerHTML=html;
+}
+
+/* ---- Week / Cardio / Rest ---- */
+function changeWeek(d){ curWeek=Math.min(12,Math.max(1,curWeek+d)); localStorage.setItem("liftlog_week",curWeek); render(); }
+
+function updCardio(k,v){ if(!state.cardio) state.cardio={type:"Run",dist:"",time:"",hr:"",rpe:""}; state.cardio[k]=v; saveLocal(false); }
+function renderCardio(){
+  const c=state.cardio||{type:"Run",dist:"",time:"",hr:"",rpe:""};
+  const types=["Run","Walk / March","Row","Bike","Other"];
+  const opts=types.map(t=>'<option'+(t===c.type?' selected':'')+'>'+t+'</option>').join("");
+  document.getElementById("exlist").innerHTML='<div class="card cardioform"><div class="exname">Cardio Session</div>'+
+    '<div class="note">Base-building for your Spartan 5K. Log the run and I track pace + endurance.</div>'+
+    '<label class="fld">Type</label><select id="cType">'+opts+'</select>'+
+    '<label class="fld">Distance (miles)</label><input id="cDist" inputmode="decimal" placeholder="e.g. 1.5">'+
+    '<label class="fld">Time (minutes)</label><input id="cTime" inputmode="decimal" placeholder="e.g. 18">'+
+    '<label class="fld">Avg HR (optional)</label><input id="cHr" inputmode="numeric" placeholder="bpm">'+
+    '<label class="fld">Effort (RPE 1-10)</label><input id="cRpe" inputmode="decimal" placeholder="how hard it felt"></div>';
+  document.getElementById("cType").value=c.type||"Run";
+  document.getElementById("cDist").value=c.dist||"";
+  document.getElementById("cTime").value=c.time||"";
+  document.getElementById("cHr").value=c.hr||"";
+  document.getElementById("cRpe").value=c.rpe||"";
+  document.getElementById("cType").addEventListener("change",e=>updCardio("type",e.target.value));
+  document.getElementById("cDist").addEventListener("input",e=>updCardio("dist",e.target.value));
+  document.getElementById("cTime").addEventListener("input",e=>updCardio("time",e.target.value));
+  document.getElementById("cHr").addEventListener("input",e=>updCardio("hr",e.target.value));
+  document.getElementById("cRpe").addEventListener("input",e=>updCardio("rpe",e.target.value));
+  document.getElementById("exlist").insertAdjacentHTML("afterbegin", warmHTML());
+  document.getElementById("exlist").insertAdjacentHTML("beforeend", coolHTML());
+}
+
+function cycleRest(){ const seq=[60,90,120,0]; let i=seq.indexOf(restLen); if(i<0)i=1; restLen=seq[(i+1)%seq.length]; localStorage.setItem("liftlog_restlen",restLen); updRestBtn(); toast(restLen?("Rest set to "+restLen+"s"):"Rest timer off"); }
+function updRestBtn(){ const b=document.getElementById("restbtn"); if(b) b.textContent= restLen?("⏲ "+restLen+"s"):"⏲ Off"; }
+let rInt=null,rLeft=0;
+function startRest(){ clearInterval(rInt); rLeft=restLen; document.getElementById("restnum").textContent=fmtT(rLeft);
+  document.getElementById("restpill").classList.add("show");
+  rInt=setInterval(()=>{ rLeft--; if(rLeft<=0){ clearInterval(rInt); document.getElementById("restnum").textContent="Rest done";
+    if(navigator.vibrate) navigator.vibrate([200,100,200]); setTimeout(()=>document.getElementById("restpill").classList.remove("show"),1500); }
+    else document.getElementById("restnum").textContent=fmtT(rLeft); },1000); }
+function restAdd(s){ rLeft+=s; document.getElementById("restnum").textContent=fmtT(rLeft); }
+function restSkip(){ clearInterval(rInt); document.getElementById("restpill").classList.remove("show"); }
+
+/* ---- Progression / PR / Warm-Cool ---- */
+function loadHist(){ try{ return JSON.parse(localStorage.getItem("liftlog_hist")||"[]"); }catch(e){ return []; } }
+function lastFor(exName){
+  const hs=loadHist().filter(h=>h.dayId===day().id).sort((a,b)=>a.ts-b.ts);
+  for(let k=hs.length-1;k>=0;k--){ const f=(hs[k].ex||[]).find(x=>x.name===exName); if(f&&f.w!=null) return f; }
+  return null;
+}
+function bestFor(exName){ let best=null; loadHist().forEach(h=>(h.ex||[]).forEach(x=>{ if(x.name===exName&&x.w!=null){ if(best==null||x.w>best) best=x.w; } })); return best; }
+function suggestNext(e){
+  const l=lastFor(e.name);
+  if(e.wt==="BW"){ if(l&&l.rpe!=null&&l.rpe<=6) return "💡 Last RPE "+l.rpe+" — add 1-2 reps."; return ""; }
+  if(!l||l.w==null||l.rpe==null) return "";
+  const tgt=parseInt((blockInfo(curWeek).rpe.match(/\d+/)||["7"])[0]);
+  const lower=/squat|lunge|deadlift|romanian|rdl|step|calf|hip|carry/i.test(e.name);
+  const inc=lower?10:5, small=lower?5:2.5;
+  if(l.rpe<=tgt-2) return "💡 Last RPE "+l.rpe+" (easy) → try "+(l.w+inc)+" lb.";
+  if(l.rpe<=tgt-1) return "💡 Last RPE "+l.rpe+" → try "+(l.w+small)+" lb.";
+  if(l.rpe>tgt+0.5) return "💡 Last RPE "+l.rpe+" (tough) → hold "+l.w+" lb, own the reps.";
+  return "💡 Last RPE "+l.rpe+" → repeat "+l.w+" lb, aim +1 rep.";
+}
+function prBadge(e,ei){
+  const best=bestFor(e.name); if(best==null) return "";
+  const cur=state.ex[ei].sets.map(s=>num(s.w)).filter(v=>v!=null);
+  if(cur.length && Math.max.apply(null,cur)>best) return '<span class="prbadge">🏆 PR!</span>';
+  return "";
+}
+function warmHTML(){ const p=PREP[day().id]; if(!p||!p.warm) return "";
+  return `<details class="card prep"><summary>🔥 Warm-up (2-3 min)</summary><ul class="preplist">${p.warm.map(w=>`<li>${w}</li>`).join("")}</ul></details>`; }
+function coolHTML(){ const p=PREP[day().id]; if(!p||!p.cool) return "";
+  const items=p.cool.map(c=>`<li><span>${c.n}</span><button class="tbtn sm" onclick="openTimerVals('${c.n}',${c.s})">⏱ ${c.s}s</button></li>`).join("");
+  return `<details class="card prep"><summary>🧘 5-min Cooldown stretch</summary><ul class="preplist cool">${items}</ul></details>`; }
 
 loadDay();
 render();
