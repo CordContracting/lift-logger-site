@@ -431,7 +431,7 @@ function buildPayload(){
 function sendToClaude(){
   const payload=buildPayload(); toast("Sending…");
   fetch('/api/log',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({date:fmtDate(state.date),session:day().name,log:payload,loggedAt:new Date().toISOString()})
+    body:JSON.stringify({date:fmtDate(state.date),session:day().name,log:payload,loggedAt:new Date().toISOString(),data:buildData()})
   }).then(async r=>{
     if(r.ok){ saveTargets(); recordHistory(); toast("Sent to Claude ✓"); render(); }
     else { console.log(await r.text()); toast("Send failed — tap Copy instead",true); }
@@ -497,6 +497,15 @@ function recordHistory(){
   hist.push(entry);
   localStorage.setItem("liftlog_hist", JSON.stringify(hist));
 }
+function buildData(){
+  if(day().cardio){ const c=state.cardio||{}; return {date:fmtDate(state.date), dayId:day().id, dayName:day().name, bw:num(state.bw), cardio:{type:c.type||"", dist:num(c.dist), time:num(c.time)}}; }
+  const ex=day().exercises.map((e,ei)=>{
+    const ws=state.ex[ei].sets.map(s=>num(s.w)).filter(v=>v!=null);
+    const rs=state.ex[ei].sets.map(s=>num(s.rpe)).filter(v=>v!=null);
+    return {name:e.name, w:ws.length?Math.max.apply(null,ws):null, rpe:rs.length?Math.max.apply(null,rs):null};
+  });
+  return {date:fmtDate(state.date), dayId:day().id, dayName:day().name, bw:num(state.bw), ex};
+}
 function chartSVG(pts,color){
   if(!pts.length) return '<div class="note">No data yet.</div>';
   const W=300,H=130,pad=24; const ys=pts.map(p=>p.y);
@@ -531,8 +540,19 @@ function hideProgress(){
 }
 let progSel="";
 function buildProgressUI(){
-  let hist=[]; try{ hist=JSON.parse(localStorage.getItem("liftlog_hist")||"[]"); }catch(e){}
-  hist.sort((a,b)=>a.ts-b.ts);
+  const p=document.getElementById("progress");
+  p.innerHTML='<div class="card"><div class="note">Loading your full history…</div></div>';
+  fetch('/api/sessions').then(r=>r.json()).then(d=>{
+    let hist=[];
+    (d.sessions||[]).forEach(s=>{ if(s.data){ try{ const j=JSON.parse(s.data);
+      hist.push({ts:Date.parse(s.loggedAt)||0, dayId:j.dayId, dayName:j.dayName, date:j.date, bw:(j.bw==null?null:j.bw), ex:j.ex||[], cardio:j.cardio}); }catch(e){} } });
+    const seen=new Set(hist.map(h=>h.dayId+"|"+h.date));
+    loadHist().forEach(h=>{ if(!seen.has(h.dayId+"|"+h.date)) hist.push(h); });
+    renderProgress(hist);
+  }).catch(()=>renderProgress(loadHist()));
+}
+function renderProgress(hist){
+  hist=(hist||[]).slice().sort((a,b)=>a.ts-b.ts);
   const p=document.getElementById("progress");
   if(!hist.length){
     p.innerHTML='<div class="card"><div class="exname">📊 Progress</div><div class="note">No sessions logged on this phone yet. Tap “Send to Claude” after a workout and your charts build here automatically. (I also keep your full history on my side — just ask me anytime.)</div></div><button class="btn ghost" style="width:100%" onclick="hideProgress()">← Back to logging</button>';
