@@ -343,8 +343,8 @@ function saveTargets(){
   if(day().cardio) return;
   const t={};
   state.ex.forEach((x,ei)=>{
-    const filled=x.sets.filter(s=>s.w);
-    if(filled.length){ t[ei]={w:filled[filled.length-1].w, r:(x.sets.find(s=>s.r)||{}).r||"", rpe:""}; }
+    const ws=x.sets.map(s=>num(s.w)).filter(v=>v!=null);
+    if(ws.length){ t[ei]={w:Math.max.apply(null,ws), r:(x.sets.find(s=>s.r)||{}).r||"", rpe:""}; }
   });
   if(Object.keys(t).length) localStorage.setItem(tgtKey(), JSON.stringify(t));
 }
@@ -391,10 +391,13 @@ function render(){
   list.insertAdjacentHTML("beforeend", warmHTML());
   day().exercises.forEach((e,ei)=>{
     const card=document.createElement("div"); card.className="card"; const cc=catColor(e); card.style.borderLeft="4px solid "+cc;
-    const wtTxt=e.wt==="BW"?"Bodyweight":`${e.wt} ${e.unit}`;
+    const sg=suggestNext(e);
+    const tw=(tgts[ei]&&tgts[ei].w)?tgts[ei].w:null;
+    const recW=(sg&&sg.w!=null)?sg.w:tw;
+    const wtTxt=e.wt==="BW"?"Bodyweight":`${recW!=null?recW:e.wt} ${e.unit}`;
     const bRpe=blockInfo(curWeek).rpe;
     const rpeTxt=e.rpe==="—"?"":` · RPE <b>${bRpe}</b>`;
-    const rolled=tgts[ei]&&tgts[ei].w&&tgts[ei].w!==e.wt;
+    const hint=sg?sg.msg:(tw!=null&&String(tw)!==String(e.wt)?`↻ Last time: ${tw} lb — beat or match it.`:"");
     card.innerHTML=`
       <div class="exhead">
         <div>
@@ -407,7 +410,7 @@ function render(){
         </div>
       </div>
       <div class="note">${e.note}</div>
-      ${(()=>{const sg=suggestNext(e);return sg?`<div class="sughint">${sg}</div>`:(rolled?`<div class="rollhint">↻ Last time: ${tgts[ei].w} lb — beat or match it.</div>`:'');})()}
+      ${hint?`<div class="sughint">${hint}</div>`:''}
       <table><thead><tr><th class="seth">Set</th><th>Weight</th><th>Reps</th><th>RPE</th><th style="width:64px">Done</th></tr></thead>
       <tbody id="tb-${ei}"></tbody></table>
       <input class="exnote" id="exnote-${ei}" placeholder="Notes for this exercise (optional)">`;
@@ -415,7 +418,7 @@ function render(){
     const ni=card.querySelector(`#exnote-${ei}`); ni.value=state.ex[ei].note||"";
     ni.addEventListener("input",ev=>updNote(ei,ev.target.value));
     const tb=card.querySelector(`#tb-${ei}`);
-    const wph=(tgts[ei]&&tgts[ei].w)?tgts[ei].w:(e.wt==="BW"?"BW":e.wt);
+    const wph=recW!=null?recW:(e.wt==="BW"?"BW":e.wt);
     const rph=e.reps.replace(/[^0-9/]/g,'')||'—';
     const rpePh=e.rpe==="—"?"—":blockInfo(curWeek).rpe;
     state.ex[ei].sets.forEach((s,si)=>{
@@ -684,17 +687,37 @@ function lastFor(exName){
   return null;
 }
 function bestFor(exName){ let best=null; loadHist().forEach(h=>(h.ex||[]).forEach(x=>{ if(x.name===exName&&x.w!=null){ if(best==null||x.w>best) best=x.w; } })); return best; }
+function lastNFor(exName,n){
+  const hs=loadHist().filter(h=>h.dayId===day().id).sort((a,b)=>a.ts-b.ts);
+  const out=[];
+  for(let k=hs.length-1;k>=0&&out.length<n;k--){ const f=(hs[k].ex||[]).find(x=>x.name===exName); if(f&&(f.w!=null||f.rpe!=null)) out.push(f); }
+  return out; /* newest first */
+}
+function rpeRange(){
+  const m=String(blockInfo(curWeek).rpe).match(/(\d+(?:\.\d+)?)(?:\s*-\s*(\d+(?:\.\d+)?))?/);
+  const lo=m?parseFloat(m[1]):7, hi=(m&&m[2])?parseFloat(m[2]):lo;
+  return {lo:lo,hi:hi};
+}
+function round2p5(v){ return Math.round(v/2.5)*2.5; }
+/* Single source of truth: history (top working set). Returns {w,msg} or null. */
 function suggestNext(e){
-  const l=lastFor(e.name);
-  if(e.wt==="BW"){ if(l&&l.rpe!=null&&l.rpe<=6) return "💡 Last RPE "+l.rpe+" — add 1-2 reps."; return ""; }
-  if(!l||l.w==null||l.rpe==null) return "";
-  const tgt=parseInt((blockInfo(curWeek).rpe.match(/\d+/)||["7"])[0]);
+  const b=blockInfo(curWeek), r=rpeRange(), deload=b.block===4;
+  const hs=lastNFor(e.name,2), l=hs[0]||null, prev=hs[1]||null;
+  if(e.wt==="BW"){
+    if(deload) return {w:null,msg:"💡 Deload — easy reps, stop 4-5 short of failure."};
+    if(l&&l.rpe!=null&&l.rpe<r.lo) return {w:null,msg:"💡 Last RPE "+l.rpe+" — add 1-2 reps."};
+    return null;
+  }
+  if(!l||l.w==null) return null;
+  if(deload){ const w=round2p5(l.w*0.85); return {w:w,msg:"💡 Deload — cut to ~"+w+" lb (was "+l.w+"), "+b.reps+"."}; }
+  if(l.rpe==null) return {w:l.w,msg:"↻ Last time: "+l.w+" lb — beat or match it."};
   const lower=/squat|lunge|deadlift|romanian|rdl|step|calf|hip|carry/i.test(e.name);
-  const inc=lower?10:5, small=lower?5:2.5;
-  if(l.rpe<=tgt-2) return "💡 Last RPE "+l.rpe+" (easy) → try "+(l.w+inc)+" lb.";
-  if(l.rpe<=tgt-1) return "💡 Last RPE "+l.rpe+" → try "+(l.w+small)+" lb.";
-  if(l.rpe>tgt+0.5) return "💡 Last RPE "+l.rpe+" (tough) → hold "+l.w+" lb, own the reps.";
-  return "💡 Last RPE "+l.rpe+" → repeat "+l.w+" lb, aim +1 rep.";
+  const inc=lower?10:5;
+  if(l.rpe>r.hi+0.5) return {w:l.w,msg:"💡 Last RPE "+l.rpe+" (target "+b.rpe+") — too hot. Hold "+l.w+" lb, own the reps."};
+  if(l.rpe<=r.lo-2){ const w=round2p5(l.w+inc); return {w:w,msg:"💡 Last RPE "+l.rpe+" — well under target "+b.rpe+". Recalibrate: try "+w+" lb."}; }
+  const prevOk=prev&&prev.w===l.w&&prev.rpe!=null&&prev.rpe<=r.hi;
+  if(prevOk){ const w=round2p5(l.w+inc); return {w:w,msg:"💡 2 sessions on target at "+l.w+" lb — move up: "+w+" lb."}; }
+  return {w:l.w,msg:"💡 Last RPE "+l.rpe+" — on target. Repeat "+l.w+" lb; hit it again and we add weight."};
 }
 function prBadge(e,ei){
   const best=bestFor(e.name); if(best==null) return "";
