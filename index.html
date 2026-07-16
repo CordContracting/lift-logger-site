@@ -510,7 +510,7 @@ function toast(msg,isErr){ const t=document.getElementById("toast"); t.textConte
   t.classList.add("show"); clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.classList.remove("show"),2200); }
 
 /* ---- Timer ---- */
-let tInt=null, tLeft=0, tTotal=0, tRunning=false;
+let tInt=null, tLeft=0, tTotal=0, tRunning=false, tEnd=0;
 function fmtT(s){ const m=Math.floor(s/60); const ss=s%60; return m+":"+(ss<10?"0":"")+ss; }
 function openTimerVals(name,secs){ tTotal=secs; tLeft=secs; tRunning=false;
   document.getElementById("tname").textContent=name;
@@ -519,15 +519,18 @@ function openTimerVals(name,secs){ tTotal=secs; tLeft=secs; tRunning=false;
   document.getElementById("tmodal").classList.add("show");
 }
 function openTimer(ei){ const e=day().exercises[ei]; openTimerVals(e.name, secsOf(e)); }
+function timerTick(){
+  if(!tRunning) return;
+  tLeft=Math.ceil((tEnd-Date.now())/1000);
+  const n=document.getElementById("tnum"); n.textContent=fmtT(Math.max(tLeft,0));
+  if(tLeft<=0){ clearInterval(tInt); tRunning=false; n.textContent="Done"; n.classList.add("fin");
+    document.getElementById("tstart").textContent="Start";
+    if(navigator.vibrate) navigator.vibrate([200,100,200]); }
+}
 function timerStartPause(){
-  if(tRunning){ clearInterval(tInt); tRunning=false; document.getElementById("tstart").textContent="Resume"; return; }
-  tRunning=true; document.getElementById("tstart").textContent="Pause";
-  tInt=setInterval(()=>{
-    tLeft--; const n=document.getElementById("tnum"); n.textContent=fmtT(Math.max(tLeft,0));
-    if(tLeft<=0){ clearInterval(tInt); tRunning=false; n.textContent="Done"; n.classList.add("fin");
-      document.getElementById("tstart").textContent="Start";
-      if(navigator.vibrate) navigator.vibrate([200,100,200]); }
-  },1000);
+  if(tRunning){ tLeft=Math.max(Math.ceil((tEnd-Date.now())/1000),0); clearInterval(tInt); tRunning=false; document.getElementById("tstart").textContent="Resume"; return; }
+  tRunning=true; tEnd=Date.now()+tLeft*1000; document.getElementById("tstart").textContent="Pause";
+  clearInterval(tInt); tInt=setInterval(timerTick,250);
 }
 function timerReset(){ clearInterval(tInt); tRunning=false; tLeft=tTotal;
   const n=document.getElementById("tnum"); n.textContent=fmtT(tLeft); n.classList.remove("fin");
@@ -670,14 +673,22 @@ function renderCardio(){
 
 function cycleRest(){ const seq=[60,90,120,0]; let i=seq.indexOf(restLen); if(i<0)i=1; restLen=seq[(i+1)%seq.length]; localStorage.setItem("liftlog_restlen",restLen); updRestBtn(); toast(restLen?("Rest set to "+restLen+"s"):"Rest timer off"); }
 function updRestBtn(){ const b=document.getElementById("restbtn"); if(b) b.textContent= restLen?("⏲ "+restLen+"s"):"⏲ Off"; }
-let rInt=null,rLeft=0;
-function startRest(){ clearInterval(rInt); rLeft=restLen; document.getElementById("restnum").textContent=fmtT(rLeft);
-  document.getElementById("restpill").classList.add("show");
-  rInt=setInterval(()=>{ rLeft--; if(rLeft<=0){ clearInterval(rInt); document.getElementById("restnum").textContent="Rest done";
+let rInt=null,rLeft=0,rEnd=0;
+function restTick(){
+  rLeft=Math.ceil((rEnd-Date.now())/1000);
+  if(rLeft<=0){ clearInterval(rInt); rInt=null; document.getElementById("restnum").textContent="Rest done";
     if(navigator.vibrate) navigator.vibrate([200,100,200]); setTimeout(()=>document.getElementById("restpill").classList.remove("show"),1500); }
-    else document.getElementById("restnum").textContent=fmtT(rLeft); },1000); }
-function restAdd(s){ rLeft+=s; document.getElementById("restnum").textContent=fmtT(rLeft); }
-function restSkip(){ clearInterval(rInt); document.getElementById("restpill").classList.remove("show"); }
+  else document.getElementById("restnum").textContent=fmtT(rLeft);
+}
+function startRest(){ clearInterval(rInt); rEnd=Date.now()+restLen*1000; rLeft=restLen;
+  document.getElementById("restnum").textContent=fmtT(rLeft);
+  document.getElementById("restpill").classList.add("show");
+  rInt=setInterval(restTick,250); }
+function restAdd(s){ rEnd+=s*1000; restTick(); }
+function restSkip(){ clearInterval(rInt); rInt=null; document.getElementById("restpill").classList.remove("show"); }
+/* Resync instantly when returning from lock/background */
+document.addEventListener("visibilitychange",()=>{ if(!document.hidden){ if(rInt) restTick(); if(tRunning) timerTick(); } });
+window.addEventListener("pageshow",()=>{ if(rInt) restTick(); if(tRunning) timerTick(); });
 
 /* ---- Progression / PR / Warm-Cool ---- */
 function loadHist(){ try{ return JSON.parse(localStorage.getItem("liftlog_hist")||"[]"); }catch(e){ return []; } }
